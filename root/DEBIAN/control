@@ -1,0 +1,11 @@
+Package: unity-lens-osvdb
+Essential: no
+Priority: optional
+Section: utils
+Maintainer: Xavier Mertens <xavier@rootshell.be>
+Homepage: http://blog.rootshell.be
+Architecture: all
+Version: 1.0
+Tag: vulnerability osvdb unity lens
+Depends: python-beautifulsoup (>=3.2.0-2)
+Description: Allow searching for vulnerabilities on OSVDB from Unity.

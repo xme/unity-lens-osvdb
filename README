@@ -1,0 +1,7 @@
+This is a lens to search for vulnerabilities directly from Ubunty/Unity.
+Vulnerabilities are searched in OSVDB (http://www.osvdb.org)
+
+2012/05/02 v1.0
+---------------
+- First release
+

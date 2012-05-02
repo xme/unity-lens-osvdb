@@ -1,0 +1,11 @@
+[Lens]
+DBusName=net.launchpad.lens.osvdb
+DBusPath=/net/launchpad/lens/osvdb
+Name=OSVDB
+Icon=/usr/share/unity/lenses/osvdb/lens-nav-osvdb.svg
+Description=A Lens for OSVDB
+SearchHint=Search OSVDB
+Shortcut=e
+
+[Desktop Entry]
+X-Ubuntu-Gettext-Domain=unity-lens-osvdb

@@ -1,0 +1,136 @@
+#! /usr/bin/python
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#    Python code based on the Wikipedia lens by David Calle.
+#
+#    Copyright (c) 2011 David Calle <davidc@framli.eu>
+#    Copyright (c) 2012 Xavier Mertens <xavier@rootshell.be>
+#
+
+import sys
+import os
+from gi.repository import GLib, GObject, Gio
+from gi.repository import Dee
+from gi.repository import Unity
+import urllib2
+import locale
+import datetime
+import re
+import fileinput
+from BeautifulSoup import BeautifulSoup # HTML processing
+
+BUS_NAME = "net.launchpad.lens.osvdb"
+
+class Daemon:
+
+    def __init__ (self):
+        self.error_connect = False
+        # The path for the Lens *must* also match the one in our .lens file
+        self._lens = Unity.Lens.new ("/net/launchpad/lens/osvdb", "osvdb")
+        self._scope = Unity.Scope.new ("/net/launchpad/lens/osvdb/main")
+        self._lens.props.search_hint = "Search OSVDB"
+        self._lens.props.visible = True;
+        self._lens.props.search_in_global = False;
+
+        self._lens.add_local_scope (self._scope);
+        self._scope.connect("search-changed", self.on_search_changed)
+        svg_dir = "/usr/share/icons/unity-icon-theme/places/svg/"
+        
+        # Populate categories
+        cats = []
+        cats.append (Unity.Category.new ("Vulnerabilities",
+                                         Gio.ThemedIcon.new(svg_dir+"group-installed.svg"),
+                                         Unity.CategoryRenderer.VERTICAL_TILE))
+        self._lens.props.categories = cats
+       	
+        self.website = "http://www.osvdb.org"
+        
+        self._lens.export ();
+        self._scope.export ();
+        
+
+    def on_search_changed (self, scope, search, search_type, *_):
+        if search_type is Unity.SearchType.DEFAULT:
+            search_string = search.props.search_string.strip()
+            model = search.props.results_model
+            model.clear ()
+            self.update_results_model(model, search_string)
+            search.set_reply_hint ("no-results-hint", GLib.Variant.new_string("No vulnerability found."))
+        search.finished ()
+        
+    def update_results_model (self, model, search):
+        if search == '':
+            search = str(datetime.datetime.now().strftime("%B %d"))
+        for vulnerability in self.osvdb_query(search):
+            model.append("%s/show/osvdb/%s" % (self.website, vulnerability[0]),
+                        "/usr/share/unity/lenses/osvdb/osvdb.png",
+                        0,
+                        "text/html",
+                        vulnerability[1],
+                        "Vulnerability",
+                        "%s/show/osvdb/%s" % (self.website, vulnerability))
+
+
+    def osvdb_query(self,search):
+        try:
+            search = search.replace(" ", "+")
+            url = ("%s/search?search[vuln_title]=%s&search[text_type]=alltext" % (self.website, search))
+            f = urllib2.urlopen(url)
+            soup = BeautifulSoup(''.join(f.read()))
+            rows = soup.findAll(attrs={'class' : re.compile("(odd|even)")})
+            results = []
+            row = 0
+            for tr in rows:
+                cols = tr.findAll('td')
+                col = 0
+                results.append([])
+                for td in cols:
+                    if col == 0:
+                        buffer = ''.join(td.find('a'))
+                        results[row].append(buffer)
+                    if col == 2:
+                        text = td.find(text=True)
+                        if len(text) > 1:
+                            buffer = text
+                        else:
+                            buffer = ''.join(td.find('a'))
+                        results[row].append(buffer.strip())           
+                    col+=1
+                row+=1
+            f.close()
+            return results
+        except (IOError, KeyError, urllib2.URLError, urllib2.HTTPError):
+            print "Error : Unable to search for vulnerabilities."
+            return []
+        
+if __name__ == "__main__":
+    session_bus_connection = Gio.bus_get_sync (Gio.BusType.SESSION, None)
+    session_bus = Gio.DBusProxy.new_sync (session_bus_connection, 0, None,
+                                          'org.freedesktop.DBus',
+                                          '/org/freedesktop/DBus',
+                                          'org.freedesktop.DBus', None)
+    result = session_bus.call_sync('RequestName',
+                                   GLib.Variant ("(su)", (BUS_NAME, 0x4)),
+                                   0, -1, None)
+                                   
+    # Unpack variant response with signature "(u)". 1 means we got it.
+    result = result.unpack()[0]
+    
+    if result != 1 :
+        print >> sys.stderr, "Failed to own name %s. Bailing out." % BUS_NAME
+        raise SystemExit (1)
+    
+    daemon = Daemon()
+    GObject.MainLoop().run()
